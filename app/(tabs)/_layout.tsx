@@ -12,13 +12,17 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: themeColors.tint,
+        tabBarActiveTintColor: '#2E7D32', // Emerald Green for active
+        tabBarInactiveTintColor: '#757575', // Gray for inactive
         headerShown: true,
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)', // slightly transparent white
           },
-          default: {},
+          default: {
+            backgroundColor: '#ffffff',
+          },
         }),
       }}>
       <Tabs.Screen

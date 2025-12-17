@@ -26,21 +26,25 @@ export const evaluateProduct = (
 
     userProfile.forEach(allergen => {
         const synonyms = ALLERGEN_MAP[allergen];
-        if (!synonyms) return;
 
-        synonyms.forEach(synonym => {
-            const normalizedSynonym = synonym.toLowerCase();
-            // Check for exact match or substring match depending on requirement.
-            // Robust scanning usually checks if the ingredient *contains* the allergen term
-            // but also be careful of false positives.
-            // For this MVP, we check if any ingredient *includes* the synonym.
-
-            const found = normalizedIngredients.find(ing => ing.includes(normalizedSynonym));
+        if (synonyms) {
+            synonyms.forEach(synonym => {
+                const normalizedSynonym = synonym.toLowerCase();
+                const found = normalizedIngredients.find(ing => ing.includes(normalizedSynonym));
+                if (found) {
+                    triggers.add(allergen);
+                    reasons.push(`${found} (matches ${allergen})`);
+                }
+            });
+        } else {
+            // Fallback for custom allergens
+            const normalizedAllergen = allergen.toLowerCase();
+            const found = normalizedIngredients.find(ing => ing.includes(normalizedAllergen));
             if (found) {
                 triggers.add(allergen);
                 reasons.push(`${found} (matches ${allergen})`);
             }
-        });
+        }
     });
 
     if (triggers.size > 0) {

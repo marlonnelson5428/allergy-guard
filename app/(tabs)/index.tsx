@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
-import { StyleSheet, Vibration, View } from 'react-native';
+import { Image, StyleSheet, Vibration, View } from 'react-native';
 import { ActivityIndicator, Button, Card, Modal, Portal, Text, Title, useTheme } from 'react-native-paper';
 import { Colors } from '../../src/constants/Colors';
 import { useUser } from '../../src/context/UserContext';
@@ -14,6 +14,7 @@ export default function ScannerScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [productName, setProductName] = useState('');
+  const [productImage, setProductImage] = useState<string | null>(null);
   const [facing, setFacing] = useState<CameraType>('back');
 
   const { userProfile, addScanToHistory } = useUser();
@@ -48,12 +49,15 @@ export default function ScannerScreen() {
       if (json.status === 1) {
         const product = json.product;
         const name = product.product_name || "Unknown Product";
+        const img = product.image_url || product.image_front_url || null;
         const ingredientsText = product.ingredients_text_en || product.ingredients_text || "";
         const ingredients = parseIngredientsText(ingredientsText);
 
         const evalResult = evaluateProduct(ingredients, userProfile);
 
         setProductName(name);
+        setProductImage(img);
+
         setResult(evalResult);
 
         // Haptics & Save
@@ -75,7 +79,7 @@ export default function ScannerScreen() {
 
       } else {
         setProductName("Product not found");
-        setResult({ safe: true, triggers: [], reason: "Product data unavailable" }); // Treat as safe or unknown? MVP says Safe checkmark implies safe, maybe Unknown state? For now default behavior.
+        setResult({ safe: true, triggers: [], reason: "Product data unavailable" });
       }
     } catch (error) {
       console.error(error);
@@ -90,6 +94,8 @@ export default function ScannerScreen() {
     setScanned(false);
     setResult(null);
     setProductName('');
+    setProductImage(null);
+
   };
 
   return (
@@ -99,7 +105,7 @@ export default function ScannerScreen() {
         facing={facing}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
-          barcodeTypes: ["ean13", "upc_a", "upc_e", "ean8"], // Focusing on common food barcodes
+          barcodeTypes: ["ean13", "upc_a", "upc_e", "ean8"],
         }}
       >
         <View style={styles.overlay}>
@@ -125,14 +131,21 @@ export default function ScannerScreen() {
                   <Title style={styles.resultTitle}>{result.safe ? "SAFE" : "UNSAFE"}</Title>
                 </View>
 
+                {productImage && (
+                  <View style={styles.imageContainer}>
+                    <Image source={{ uri: productImage }} style={styles.productImage} resizeMode="contain" />
+                  </View>
+                )}
+
                 <Title style={styles.productName}>{productName}</Title>
 
                 {!result.safe && (
                   <View style={styles.unsafeInfo}>
-                    <Text style={styles.reasonTitle}>Triggers:</Text>
-                    <Text style={styles.reasonText}>{result.reason}</Text>
+                    <Text style={styles.reasonTitle}>Triggers: {result.triggers.join(', ')}</Text>
                   </View>
                 )}
+
+
 
                 {result.safe && (
                   <Text style={styles.safeText}>No selected allergens found.</Text>
@@ -180,19 +193,29 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     padding: 20,
+    maxHeight: '90%',
   },
   card: {
-    padding: 20,
+    padding: 10,
   },
   resultHeader: {
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 0,
   },
   resultTitle: {
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 10,
+  },
+  imageContainer: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  productImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 10,
+    backgroundColor: 'white',
   },
   productName: {
     color: 'white',
@@ -203,7 +226,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.2)',
     padding: 10,
     borderRadius: 5,
-    marginTop: 10,
+    marginTop: 5,
+    marginBottom: 10,
   },
   reasonTitle: {
     color: 'white',
@@ -211,6 +235,11 @@ const styles = StyleSheet.create({
   },
   reasonText: {
     color: 'white',
+  },
+  ingredientsContainer: {
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    padding: 10,
+    borderRadius: 5,
   },
   safeText: {
     color: 'white',
