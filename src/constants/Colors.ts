@@ -16,5 +16,6 @@ export const Colors = {
     scanner: {
         safe: '#2E7D32', // Emerald Green
         unsafe: '#D32F2F', // Signal Red
+        unknown: '#FFC107',
     }
 };

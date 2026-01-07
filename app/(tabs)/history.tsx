@@ -8,22 +8,33 @@ export default function HistoryScreen() {
     const { scanHistory, clearHistory } = useUser();
     const theme = useTheme();
 
-    const renderItem = ({ item }: { item: ScanResult }) => (
-        <List.Item
-            title={item.productName || "Unknown Product"}
-            description={`${new Date(item.date).toLocaleDateString()} ${new Date(item.date).toLocaleTimeString()}`}
-            left={props => (
-                <List.Icon
-                    {...props}
-                    icon={item.safe ? "check-circle" : "alert-circle"}
-                    color={item.safe ? Colors.scanner.safe : Colors.scanner.unsafe}
-                />
-            )}
-            right={props => (
-                !item.safe ? <List.Icon {...props} icon="close" /> : null
-            )}
-        />
-    );
+    const getStatus = (item: ScanResult) => {
+        if (item.status) return item.status;
+        return item.safe ? 'safe' : 'unsafe';
+    };
+
+    const renderItem = ({ item }: { item: ScanResult }) => {
+        const status = getStatus(item);
+        const icon = status === 'unsafe' ? "alert-circle" : status === 'unknown' ? "help-circle" : "check-circle";
+        const color = status === 'unsafe' ? Colors.scanner.unsafe : status === 'unknown' ? Colors.scanner.unknown : Colors.scanner.safe;
+
+        return (
+            <List.Item
+                title={item.productName || "Unknown Product"}
+                description={`${new Date(item.date).toLocaleDateString()} ${new Date(item.date).toLocaleTimeString()}`}
+                left={props => (
+                    <List.Icon
+                        {...props}
+                        icon={icon}
+                        color={color}
+                    />
+                )}
+                right={props => (
+                    status === 'unsafe' ? <List.Icon {...props} icon="close" /> : null
+                )}
+            />
+        );
+    };
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

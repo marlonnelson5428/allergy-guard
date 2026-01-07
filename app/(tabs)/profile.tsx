@@ -3,19 +3,30 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Dialog, Divider, FAB, IconButton, List, Portal, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useUser } from '../../src/context/UserContext';
 import { CORE_ALLERGENS } from '../../src/data/allergenMap';
+import { fetchSynonyms } from '../../src/utils/translation';
 
 export default function ProfileScreen() {
-    const { userProfile, toggleAllergen } = useUser();
+    const { userProfile, toggleAllergen, addCustomAllergenWithSynonyms } = useUser();
     const theme = useTheme();
     const [visible, setVisible] = React.useState(false);
     const [customAllergen, setCustomAllergen] = React.useState('');
 
+    const [adding, setAdding] = React.useState(false);
+
     const showDialog = () => setVisible(true);
     const hideDialog = () => setVisible(false);
 
-    const handleAdd = () => {
+    const handleAdd = async () => {
         if (customAllergen.trim()) {
-            toggleAllergen(customAllergen.toLowerCase().trim());
+            setAdding(true);
+            const term = customAllergen.toLowerCase().trim();
+            // Fetch translations
+            const synonyms = await fetchSynonyms(term);
+
+            // Add with synonyms
+            addCustomAllergenWithSynonyms(term, synonyms);
+
+            setAdding(false);
             setCustomAllergen('');
             hideDialog();
         }
@@ -75,7 +86,7 @@ export default function ProfileScreen() {
                     </Dialog.Content>
                     <Dialog.Actions>
                         <Button onPress={hideDialog}>Cancel</Button>
-                        <Button onPress={handleAdd}>Add</Button>
+                        <Button onPress={handleAdd} loading={adding} disabled={adding}>Add</Button>
                     </Dialog.Actions>
                 </Dialog>
             </Portal>
@@ -86,7 +97,7 @@ export default function ProfileScreen() {
                 onPress={showDialog}
                 label="Add Allergen"
             />
-        </View>
+        </View >
     );
 }
 

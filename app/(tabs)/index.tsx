@@ -6,6 +6,7 @@ import { Image, StyleSheet, Vibration, View } from 'react-native';
 import { ActivityIndicator, Button, Card, Modal, Portal, Text, Title, useTheme } from 'react-native-paper';
 import { Colors } from '../../src/constants/Colors';
 import { useUser } from '../../src/context/UserContext';
+import { AlternativeProduct, getAlternativeRecommendations } from '../../src/services/RecommendationService';
 import { evaluateProduct, EvaluationResult, parseIngredientsText } from '../../src/utils/safetyEngine';
 
 export default function ScannerScreen() {
@@ -15,9 +16,12 @@ export default function ScannerScreen() {
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [productName, setProductName] = useState('');
   const [productImage, setProductImage] = useState<string | null>(null);
+  const [alternatives, setAlternatives] = useState<AlternativeProduct[]>([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
   const [facing, setFacing] = useState<CameraType>('back');
+  const isProcessing = React.useRef(false);
 
-  const { userProfile, addScanToHistory } = useUser();
+  const { userProfile, customSynonyms, addScanToHistory } = useUser();
   const theme = useTheme();
 
   // If permissions are still loading
@@ -35,8 +39,9 @@ export default function ScannerScreen() {
   }
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    if (scanned || loading) return;
+    if (scanned || loading || isProcessing.current) return;
 
+    isProcessing.current = true;
     setScanned(true);
     setLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -53,20 +58,35 @@ export default function ScannerScreen() {
         const ingredientsText = product.ingredients_text_en || product.ingredients_text || "";
         const ingredients = parseIngredientsText(ingredientsText);
 
-        const evalResult = evaluateProduct(ingredients, userProfile);
+        const evalResult = evaluateProduct(ingredients, userProfile, customSynonyms);
 
         setProductName(name);
         setProductImage(img);
-
+        setAlternatives([]); // Clear previous alternatives
         setResult(evalResult);
 
-        // Haptics & Save
-        if (evalResult.safe) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
+        // Calculate visual feedback immediately
+        if (evalResult.status === 'unsafe') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          // Vibrate longer for unsafe
           Vibration.vibrate(500);
+
+          // Fetch alternatives in background
+          setLoadingAlternatives(true);
+          getAlternativeRecommendations(name, evalResult.triggers, userProfile)
+            .then((fetchedAlternatives) => {
+              setAlternatives(fetchedAlternatives);
+            })
+            .catch((err) => {
+              console.error("Failed to get alternatives", err);
+            })
+            .finally(() => {
+              setLoadingAlternatives(false);
+            });
+
+        } else if (evalResult.status === 'unknown') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
 
         addScanToHistory({
@@ -74,19 +94,21 @@ export default function ScannerScreen() {
           productName: name,
           date: new Date().toISOString(),
           safe: evalResult.safe,
+          status: evalResult.status,
           triggers: evalResult.triggers
         });
 
       } else {
         setProductName("Product not found");
-        setResult({ safe: true, triggers: [], reason: "Product data unavailable" });
+        setResult({ safe: true, status: 'unknown', triggers: [], reason: "Product data unavailable" });
       }
     } catch (error) {
       console.error(error);
       setProductName("Error fetching data");
-      setResult({ safe: true, triggers: [], reason: "Network error" });
+      setResult({ safe: true, status: 'unknown', triggers: [], reason: "Network error" });
     } finally {
       setLoading(false);
+      isProcessing.current = false;
     }
   };
 
@@ -95,6 +117,8 @@ export default function ScannerScreen() {
     setResult(null);
     setProductName('');
     setProductImage(null);
+    setAlternatives([]);
+
 
   };
 
@@ -120,15 +144,19 @@ export default function ScannerScreen() {
       {result && (
         <Portal>
           <Modal visible={true} onDismiss={resetScanner} contentContainerStyle={styles.modalContent}>
-            <Card style={[styles.card, { backgroundColor: result.safe ? Colors.scanner.safe : Colors.scanner.unsafe }]}>
+            <Card style={[styles.card, {
+              backgroundColor: result.status === 'unsafe' ? Colors.scanner.unsafe : result.status === 'unknown' ? Colors.scanner.unknown : Colors.scanner.safe
+            }]}>
               <Card.Content>
                 <View style={styles.resultHeader}>
                   <MaterialCommunityIcons
-                    name={result.safe ? "check-circle" : "alert-circle"}
+                    name={result.status === 'unsafe' ? "alert-circle" : result.status === 'unknown' ? "help-circle" : "check-circle"}
                     size={60}
                     color="white"
                   />
-                  <Title style={styles.resultTitle}>{result.safe ? "SAFE" : "UNSAFE"}</Title>
+                  <Title style={styles.resultTitle}>
+                    {result.status === 'unsafe' ? "UNSAFE" : result.status === 'unknown' ? "UNKNOWN" : "SAFE"}
+                  </Title>
                 </View>
 
                 {productImage && (
@@ -139,15 +167,43 @@ export default function ScannerScreen() {
 
                 <Title style={styles.productName}>{productName}</Title>
 
-                {!result.safe && (
+                {result.status === 'unsafe' && (
                   <View style={styles.unsafeInfo}>
                     <Text style={styles.reasonTitle}>Triggers: {result.triggers.join(', ')}</Text>
+                    <Text style={styles.reasonText}>{result.reason}</Text>
                   </View>
+                )}
+
+                {result.status === 'unsafe' && (
+                  <View style={styles.alternativesContainer}>
+                    <Title style={styles.sectionTitle}>✨ Safer Alternatives</Title>
+                    {loadingAlternatives ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator animating={true} color="white" size="small" />
+                        <Text style={styles.loadingText}>Finding alternatives...</Text>
+                      </View>
+                    ) : (
+                      alternatives.length > 0 ? (
+                        alternatives.map((alt, index) => (
+                          <View key={index} style={styles.alternativeItem}>
+                            <Text style={styles.altName}>{alt.name}</Text>
+                            <Text style={styles.altReason}>{alt.reason}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.safeText}>No recommendations found.</Text>
+                      )
+                    )}
+                  </View>
+                )}
+
+                {result.status === 'unknown' && (
+                  <Text style={styles.safeText}>{result.reason}</Text>
                 )}
 
 
 
-                {result.safe && (
+                {result.status === 'safe' && (
                   <Text style={styles.safeText}>No selected allergens found.</Text>
                 )}
 
@@ -249,5 +305,42 @@ const styles = StyleSheet.create({
   actions: {
     justifyContent: 'center',
     marginTop: 20,
-  }
+  },
+  alternativesContainer: {
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.3)',
+    paddingTop: 10,
+  },
+  sectionTitle: {
+    color: 'white',
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  alternativeItem: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  altName: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  altReason: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    color: 'white',
+    marginLeft: 10,
+    fontStyle: 'italic',
+  },
 });
