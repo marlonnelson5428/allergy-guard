@@ -188,6 +188,10 @@ export default function ScannerScreen() {
                           <View key={index} style={styles.alternativeItem}>
                             <Text style={styles.altName}>{alt.name}</Text>
                             <Text style={styles.altReason}>{alt.reason}</Text>
+                            <Image 
+                              source={alt.image} 
+                              style={{ width: 200, height: 200 }}
+                            />
                           </View>
                         ))
                       ) : (
